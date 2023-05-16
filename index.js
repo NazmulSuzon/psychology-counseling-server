@@ -46,6 +46,18 @@ async function run() {
     const usersCollection = client.db('psychologyCounseling').collection('users');
     const doctorsCollection = client.db('psychologyCounseling').collection('doctors');
 
+    // NOTE: make sure, use verifyAdmin after verifyJWT
+    const verifyAdmin = async(req, res, next) =>{
+      const decodedEmail = req.decoded.email;
+      const query = {email: decodedEmail};
+      const user = await usersCollection.findOne(query);
+
+      if(user?.role !== 'admin'){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      next();
+    }
+
     // use aggregate to query multiple collection and then merge data
     app.get('/appointmentOptions', async (req, res) => {
       const date = req.query.date;
@@ -146,15 +158,7 @@ async function run() {
       res.send(result);
     });
 
-    app.put('/users/admin/:id', verifyJWT, async(req, res) => {
-      const decodedEmail = req.decoded.email;
-      const query = {email: decodedEmail};
-      const user = await usersCollection.findOne(query);
-
-      if(user?.role !== admin){
-        return res.status(403).send({message: 'forbidden access'})
-      }
-
+    app.put('/users/admin/:id', verifyJWT, verifyAdmin, async(req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) }
       const options = { upsert: true};
@@ -169,24 +173,24 @@ async function run() {
 
 
     // Doctors Collection
-    app.get('/doctors', async(req, res) =>{
+    app.get('/doctors', verifyJWT, verifyAdmin, async(req, res) =>{
       const query = {};
       const doctors = await doctorsCollection.find(query).toArray();
       res.send(doctors);
     })
 
-    app.post('/doctors', async(req, res) =>{
+    app.post('/doctors', verifyJWT, verifyAdmin, async(req, res) =>{
       const doctor = req.body;
       const result = await doctorsCollection.insertOne(doctor);
       res.send(result);
     })
 
-
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    app.delete('/doctors/:id', verifyJWT, verifyAdmin, async(req, res) =>{
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await doctorsCollection.deleteOne(filter);
+      res.send(result);
+    })
   } 
   finally {
     // await client.close();
@@ -200,3 +204,9 @@ app.get('/', async(req, res) =>{
 })
 
 app.listen(port, () => console.log(`psychology-counseling-server running on ${port}`))
+
+// Connect the client to the server	(optional starting in v4.7)
+    // await client.connect();
+    // Send a ping to confirm a successful connection
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
